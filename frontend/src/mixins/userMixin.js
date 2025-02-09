@@ -16,8 +16,31 @@ export default {
             const token = localStorage.getItem('token')
             const userRole = localStorage.getItem('userRole')
             if (token) {
-                this.isLoggedIn = true
-                this.isAdmin = userRole === 'admin'
+                try {
+                    // Validate token by making a request
+                    const response = await fetch(`${API_URL}/available-quizzes`, {
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        }
+                    })
+                    
+                    if (response.ok) {
+                        this.isLoggedIn = true
+                        this.isAdmin = userRole === 'admin'
+                        // Redirect if on login/register page
+                        if (this.$route && (this.$route.path === '/login' || this.$route.path === '/register')) {
+                            this.$router.push(this.isAdmin ? '/admin/subjects' : '/quizzes')
+                        }
+                    } else if (response.status === 401) {
+                        // Token is invalid or expired
+                        this.handleLogout()
+                    }
+                } catch (error) {
+                    console.error('Auth check failed:', error)
+                }
+            } else if (this.$route && this.$route.meta.requiresAuth) {
+                this.$router.push('/login')
             }
         },
         async login(username, password) {
@@ -64,16 +87,50 @@ export default {
                 return { success: false, error: 'Registration failed. Please try again.' }
             }
         },
-        logout() {
+        handleLogout() {
             localStorage.removeItem('token')
             localStorage.removeItem('userRole')
             this.user = null
             this.isLoggedIn = false
             this.isAdmin = false
-            this.$router.push('/login')
+            if (this.$route && this.$route.meta.requiresAuth) {
+                this.$router.push('/login')
+            }
+        },
+        async makeAuthenticatedRequest(url, options = {}) {
+            const token = localStorage.getItem('token')
+            if (!token) {
+                this.handleLogout()
+                return null
+            }
+
+            try {
+                const response = await fetch(url, {
+                    ...options,
+                    headers: {
+                        ...options.headers,
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                })
+
+                if (response.status === 401) {
+                    this.handleLogout()
+                    return null
+                }
+
+                return response
+            } catch (error) {
+                console.error('Request failed:', error)
+                return null
+            }
         },
         getAuthHeaders() {
             const token = localStorage.getItem('token')
+            if (!token) {
+                this.handleLogout()
+                return {}
+            }
             return {
                 'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
