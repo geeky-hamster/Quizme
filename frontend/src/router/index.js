@@ -11,7 +11,12 @@ import NegotiationPage from '@/views/NegotiationPage.vue'
 const routes = [
   {
     path: '/',
-    redirect: '/login'
+    redirect: to => {
+      const token = localStorage.getItem('token')
+      const userRole = localStorage.getItem('userRole')
+      if (!token) return '/login'
+      return userRole === 'admin' ? '/admin/dashboard' : '/dashboard'
+    }
   },
   {
     path: '/login',
@@ -22,6 +27,18 @@ const routes = [
     path: '/register',
     name: 'Register',
     component: () => import('../views/RegistrationPage.vue')
+  },
+  {
+    path: '/admin/dashboard',
+    name: 'AdminDashboard',
+    component: () => import('../views/admin/AdminDashboard.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true }
+  },
+  {
+    path: '/dashboard',
+    name: 'UserDashboard',
+    component: () => import('../views/user/UserDashboard.vue'),
+    meta: { requiresAuth: true }
   },
   {
     path: '/admin/subjects',

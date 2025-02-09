@@ -42,21 +42,35 @@ export default {
       </button>
       <div class="collapse navbar-collapse" id="navbarNav">
         <ul class="navbar-nav me-auto">
-          <li class="nav-item" v-if="isLoggedIn && isAdmin">
-            <router-link class="nav-link" to="/admin/subjects">
-              <i class="fas fa-book me-1"></i> Manage Subjects
-            </router-link>
-          </li>
-          <li class="nav-item" v-if="isLoggedIn && !isAdmin">
-            <router-link class="nav-link" to="/quizzes">
-              <i class="fas fa-tasks me-1"></i> Available Quizzes
-            </router-link>
-          </li>
-          <li class="nav-item" v-if="isLoggedIn && !isAdmin">
-            <router-link class="nav-link" to="/my-scores">
-              <i class="fas fa-chart-bar me-1"></i> My Scores
-            </router-link>
-          </li>
+          <template v-if="isLoggedIn && isAdmin">
+            <li class="nav-item">
+              <router-link class="nav-link" to="/admin/dashboard">
+                <i class="fas fa-tachometer-alt me-1"></i> Dashboard
+              </router-link>
+            </li>
+            <li class="nav-item">
+              <router-link class="nav-link" to="/admin/subjects">
+                <i class="fas fa-book me-1"></i> Manage Subjects
+              </router-link>
+            </li>
+          </template>
+          <template v-if="isLoggedIn && !isAdmin">
+            <li class="nav-item">
+              <router-link class="nav-link" to="/dashboard">
+                <i class="fas fa-tachometer-alt me-1"></i> Dashboard
+              </router-link>
+            </li>
+            <li class="nav-item">
+              <router-link class="nav-link" to="/quizzes">
+                <i class="fas fa-tasks me-1"></i> Available Quizzes
+              </router-link>
+            </li>
+            <li class="nav-item">
+              <router-link class="nav-link" to="/my-scores">
+                <i class="fas fa-chart-bar me-1"></i> My Scores
+              </router-link>
+            </li>
+          </template>
         </ul>
         <ul class="navbar-nav">
           <template v-if="!isLoggedIn">

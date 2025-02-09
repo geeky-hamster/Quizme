@@ -1,23 +1,42 @@
 const API_URL = 'http://localhost:5000'
+import { ref, watch } from 'vue'
 
 export default {
     data() {
         return {
             user: null,
-            isLoggedIn: false,
-            isAdmin: false
+            isLoggedIn: ref(false),
+            isAdmin: ref(false)
         }
     },
     created() {
         this.checkAuth()
+        
+        // Listen for auth state changes
+        window.addEventListener('auth-state-changed', this.handleAuthStateChange)
+        
+        // Watch localStorage changes
+        watch(() => localStorage.getItem('token'), () => {
+            this.checkAuth()
+        })
+        watch(() => localStorage.getItem('userRole'), () => {
+            this.checkAuth()
+        })
+    },
+    beforeUnmount() {
+        window.removeEventListener('auth-state-changed', this.handleAuthStateChange)
     },
     methods: {
+        handleAuthStateChange(event) {
+            this.isLoggedIn = event.detail.isLoggedIn
+            this.isAdmin = event.detail.isAdmin
+        },
         async checkAuth() {
             const token = localStorage.getItem('token')
             const userRole = localStorage.getItem('userRole')
+            
             if (token) {
                 try {
-                    // Validate token by making a request
                     const response = await fetch(`${API_URL}/available-quizzes`, {
                         headers: {
                             'Authorization': `Bearer ${token}`,
@@ -28,19 +47,26 @@ export default {
                     if (response.ok) {
                         this.isLoggedIn = true
                         this.isAdmin = userRole === 'admin'
-                        // Redirect if on login/register page
-                        if (this.$route && (this.$route.path === '/login' || this.$route.path === '/register')) {
-                            this.$router.push(this.isAdmin ? '/admin/subjects' : '/quizzes')
-                        }
+                        
+                        // Emit auth state change event
+                        window.dispatchEvent(new CustomEvent('auth-state-changed', {
+                            detail: { 
+                                isLoggedIn: true, 
+                                isAdmin: userRole === 'admin' 
+                            }
+                        }))
                     } else if (response.status === 401) {
-                        // Token is invalid or expired
                         this.handleLogout()
                     }
                 } catch (error) {
                     console.error('Auth check failed:', error)
                 }
-            } else if (this.$route && this.$route.meta.requiresAuth) {
-                this.$router.push('/login')
+            } else {
+                this.isLoggedIn = false
+                this.isAdmin = false
+                if (this.$route && this.$route.meta.requiresAuth) {
+                    this.$router.push('/login')
+                }
             }
         },
         async login(username, password) {
@@ -53,18 +79,27 @@ export default {
                     body: JSON.stringify({ username, password })
                 })
                 const data = await response.json()
+                
                 if (response.ok) {
                     localStorage.setItem('token', data.access_token)
                     localStorage.setItem('userRole', data.role)
-                    this.isLoggedIn = true
-                    this.isAdmin = data.role === 'admin'
-                    return { success: true }
+                    
+                    return { 
+                        success: true,
+                        role: data.role 
+                    }
                 } else {
-                    return { success: false, error: data.error }
+                    return { 
+                        success: false, 
+                        error: data.error 
+                    }
                 }
             } catch (error) {
                 console.error('Login failed:', error)
-                return { success: false, error: 'Login failed. Please try again.' }
+                return { 
+                    success: false, 
+                    error: 'Login failed. Please try again.' 
+                }
             }
         },
         async register(userData) {
@@ -93,6 +128,15 @@ export default {
             this.user = null
             this.isLoggedIn = false
             this.isAdmin = false
+            
+            // Emit auth state change event
+            window.dispatchEvent(new CustomEvent('auth-state-changed', {
+                detail: { 
+                    isLoggedIn: false, 
+                    isAdmin: false 
+                }
+            }))
+            
             if (this.$route && this.$route.meta.requiresAuth) {
                 this.$router.push('/login')
             }

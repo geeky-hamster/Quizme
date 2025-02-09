@@ -62,15 +62,33 @@ export default {
       this.loading = true
       this.error = null
       
-      const result = await this.login(this.username, this.password)
-      
-      if (result.success) {
-        this.$router.push(this.isAdmin ? '/admin/subjects' : '/quizzes')
-      } else {
-        this.error = result.error
+      try {
+        const result = await this.login(this.username, this.password)
+        
+        if (result.success) {
+          // Update local state
+          this.isLoggedIn = true
+          this.isAdmin = result.role === 'admin'
+          
+          // Emit auth state change event
+          window.dispatchEvent(new CustomEvent('auth-state-changed', {
+            detail: { 
+              isLoggedIn: true, 
+              isAdmin: result.role === 'admin' 
+            }
+          }))
+          
+          // Navigate to appropriate dashboard
+          this.$router.push(this.isAdmin ? '/admin/dashboard' : '/dashboard')
+        } else {
+          this.error = result.error
+        }
+      } catch (error) {
+        this.error = 'Login failed. Please try again.'
+        console.error('Login error:', error)
+      } finally {
+        this.loading = false
       }
-      
-      this.loading = false
     }
   }
 }

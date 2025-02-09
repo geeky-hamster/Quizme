@@ -15,24 +15,17 @@ db.init_app(app)
 bcrypt = Bcrypt(app)
 jwt = JWTManager(app)
 
-# Enable CORS for all routes
+# Enable CORS for all routes with proper configuration
 CORS(app, 
      resources={
          r"/*": {
-             "origins": ["http://localhost:8080"],
+             "origins": "http://localhost:8080",
              "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
              "allow_headers": ["Content-Type", "Authorization"],
-             "supports_credentials": True
+             "supports_credentials": True,
+             "expose_headers": ["Content-Type", "Authorization"]
          }
      })
-
-@app.after_request
-def after_request(response):
-    response.headers.add('Access-Control-Allow-Origin', 'http://localhost:8080')
-    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
-    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
-    response.headers.add('Access-Control-Allow-Credentials', 'true')
-    return response
 
 def create_admin():
     admin = User.query.filter_by(role='admin').first()
@@ -48,7 +41,7 @@ def create_admin():
         db.session.add(admin)
         db.session.commit()
 
-with app.app_context():
+with app.app_context(): 
     db.create_all()
     create_admin()
 
@@ -56,7 +49,7 @@ with app.app_context():
 @app.route('/register', methods=['POST'])
 def register():
     data = request.get_json()
-    
+
     # Check if all required fields are present
     required_fields = ['username', 'password', 'full_name', 'qualification', 'dob']
     for field in required_fields:
@@ -224,18 +217,33 @@ def get_chapter(chapter_id):
         'subject_id': chapter.subject_id
     }), 200
 
-@app.route('/chapters/<int:chapter_id>', methods=['DELETE'])
+@app.route('/chapters/<int:chapter_id>', methods=['PUT', 'DELETE'])
 @jwt_required()
-def delete_chapter(chapter_id):
+def manage_chapter(chapter_id):
     current_user = get_jwt_identity()
     if current_user['role'] != 'admin':
         return jsonify({"error": "Unauthorized"}), 403
     
     chapter = Chapter.query.get_or_404(chapter_id)
+    
+    if request.method == 'DELETE':
+        try:
+            db.session.delete(chapter)
+            db.session.commit()
+            return jsonify({"message": "Chapter deleted successfully"}), 200
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+    
+    # PUT method
+    data = request.get_json()
+    if not data.get('name'):
+        return jsonify({"error": "Chapter name is required"}), 400
+    
     try:
-        db.session.delete(chapter)
+        chapter.name = data['name']
+        chapter.description = data.get('description', chapter.description)
         db.session.commit()
-        return jsonify({"message": "Chapter deleted successfully"}), 200
+        return jsonify({"message": "Chapter updated successfully"}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -318,18 +326,56 @@ def get_quiz(quiz_id):
         'chapter_id': quiz.chapter_id
     }), 200
 
-@app.route('/quizzes/<int:quiz_id>', methods=['DELETE'])
+@app.route('/quizzes/<int:quiz_id>', methods=['PUT', 'DELETE'])
 @jwt_required()
-def delete_quiz(quiz_id):
+def manage_quiz(quiz_id):
     current_user = get_jwt_identity()
     if current_user['role'] != 'admin':
         return jsonify({"error": "Unauthorized"}), 403
     
     quiz = Quiz.query.get_or_404(quiz_id)
+    
+    if request.method == 'DELETE':
+        try:
+            db.session.delete(quiz)
+            db.session.commit()
+            return jsonify({"message": "Quiz deleted successfully"}), 200
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+    
+    # PUT method
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+
+    required_fields = ['title', 'start_date', 'end_date', 'time_duration']
+    missing_fields = [field for field in required_fields if not data.get(field)]
+    if missing_fields:
+        return jsonify({"error": f"Missing required fields: {', '.join(missing_fields)}"}), 400
+    
     try:
-        db.session.delete(quiz)
+        # Parse dates from ISO format
+        start_date = datetime.fromisoformat(data['start_date'])
+        end_date = datetime.fromisoformat(data['end_date'])
+        
+        if start_date >= end_date:
+            return jsonify({"error": "End date must be after start date"}), 400
+        
+        time_duration = int(data['time_duration'])
+        if time_duration <= 0:
+            return jsonify({"error": "Time duration must be a positive number of minutes"}), 400
+        
+        quiz.title = data['title']
+        quiz.description = data.get('description', quiz.description)
+        quiz.start_date = start_date
+        quiz.end_date = end_date
+        quiz.time_duration = time_duration
+        quiz.status = data.get('status', quiz.status)
+        
         db.session.commit()
-        return jsonify({"message": "Quiz deleted successfully"}), 200
+        return jsonify({"message": "Quiz updated successfully"}), 200
+    except ValueError as e:
+        return jsonify({"error": "Invalid date format or time duration. Please check your input."}), 400
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -385,7 +431,7 @@ def attempt_quiz(quiz_id):
     
     if existing_attempt:
         return jsonify({"error": "You have already attempted this quiz"}), 400
-    
+
     data = request.get_json()
     if not data.get('answers'):
         return jsonify({"error": "No answers provided"}), 400
@@ -425,7 +471,7 @@ def manage_questions(quiz_id):
         current_user = get_jwt_identity()
         if current_user['role'] != 'admin':
             return jsonify({"error": "Unauthorized"}), 403
-        
+
         data = request.get_json()
         if not data:
             return jsonify({"error": "No data provided"}), 400
@@ -492,6 +538,80 @@ def get_user_scores():
         })
     
     return jsonify(score_data), 200
+
+@app.route('/admin/dashboard-stats', methods=['GET'])
+@jwt_required()
+def get_dashboard_stats():
+    current_user = get_jwt_identity()
+    if current_user['role'] != 'admin':
+        return jsonify({"error": "Unauthorized"}), 403
+    
+    try:
+        # Get total subjects
+        total_subjects = Subject.query.count()
+        
+        # Get total chapters
+        total_chapters = Chapter.query.count()
+        
+        # Get active quizzes
+        now = datetime.utcnow()
+        active_quizzes = Quiz.query.filter(
+            Quiz.status == 'active',
+            Quiz.start_date <= now,
+            Quiz.end_date >= now
+        ).count()
+        
+        # Get total users (excluding admin)
+        total_users = User.query.filter(User.role != 'admin').count()
+        
+        # Get latest subject
+        latest_subject = Subject.query.order_by(Subject.id.desc()).first()
+        latest_subject_data = None
+        if latest_subject:
+            latest_subject_data = {
+                'id': latest_subject.id,
+                'name': latest_subject.name
+            }
+        
+        # Get latest chapter
+        latest_chapter = Chapter.query.order_by(Chapter.id.desc()).first()
+        latest_chapter_data = None
+        if latest_chapter:
+            latest_chapter_data = {
+                'id': latest_chapter.id,
+                'name': latest_chapter.name
+            }
+        
+        # Get recent activity
+        recent_scores = Score.query.order_by(Score.time_stamp_of_attempt.desc()).limit(5).all()
+        recent_activity = []
+        
+        for score in recent_scores:
+            user = User.query.get(score.user_id)
+            quiz = Quiz.query.get(score.quiz_id)
+            chapter = Chapter.query.get(quiz.chapter_id)
+            subject = Subject.query.get(chapter.subject_id)
+            
+            recent_activity.append({
+                'id': score.id,
+                'icon': 'fas fa-check-circle text-success',
+                'text': f"{user.full_name} completed quiz '{quiz.title}' with score {score.total_scored}/{score.total_questions}",
+                'timestamp': score.time_stamp_of_attempt.isoformat()
+            })
+        
+        return jsonify({
+            'stats': {
+                'subjects': total_subjects,
+                'chapters': total_chapters,
+                'activeQuizzes': active_quizzes,
+                'users': total_users
+            },
+            'latestSubject': latest_subject_data,
+            'latestChapter': latest_chapter_data,
+            'recentActivity': recent_activity
+        }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)
