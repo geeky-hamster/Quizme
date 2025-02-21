@@ -139,6 +139,7 @@
 
 <script>
 import userMixin from '../../mixins/userMixin'
+import { formatDateTime, formatQuizDateTime } from '@/utils/dateUtils'
 
 export default {
   name: 'UserDashboard',
@@ -154,8 +155,8 @@ export default {
       recentScores: []
     }
   },
-  created() {
-    this.fetchDashboardData()
+  async created() {
+    await this.fetchDashboardData()
   },
   methods: {
     async fetchDashboardData() {
@@ -184,7 +185,10 @@ export default {
       }
     },
     formatDate(dateStr) {
-      return new Date(dateStr).toLocaleString()
+      return formatDateTime(dateStr)
+    },
+    formatQuizDate(dateStr) {
+      return formatQuizDateTime(dateStr)
     },
     getScoreBadgeClass(percentage) {
       if (percentage >= 80) return 'score-badge-excellent'

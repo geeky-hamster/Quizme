@@ -138,7 +138,9 @@ export default {
           const result = await response.json()
           this.$router.push({
             path: '/my-scores',
-            query: { message: `Quiz submitted successfully! Score: ${result.score}` }
+            query: { 
+              message: `Quiz submitted successfully! Score: ${result.percentage}% (${result.score})`
+            }
           })
         } else {
           const data = await response.json()

@@ -67,6 +67,11 @@ export default {
                             </router-link>
                         </li>
                         <li class="nav-item">
+                            <router-link class="nav-link" to="/admin/statistics">
+                                <i class="fas fa-chart-line me-1"></i> Analytics
+                            </router-link>
+                        </li>
+                        <li class="nav-item">
                             <router-link class="nav-link" to="/admin/subjects">
                                 <i class="fas fa-book me-1"></i> Manage Subjects
                             </router-link>
@@ -76,6 +81,11 @@ export default {
                         <li class="nav-item">
                             <router-link class="nav-link" to="/dashboard">
                                 <i class="fas fa-tachometer-alt me-1"></i> Dashboard
+                            </router-link>
+                        </li>
+                        <li class="nav-item">
+                            <router-link class="nav-link" to="/user/statistics">
+                                <i class="fas fa-chart-line me-1"></i> My Performance
                             </router-link>
                         </li>
                         <li class="nav-item">

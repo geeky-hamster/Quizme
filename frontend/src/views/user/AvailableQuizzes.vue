@@ -42,6 +42,7 @@
 
 <script>
 import userMixin from '../../mixins/userMixin'
+import { formatQuizDateTime } from '@/utils/dateUtils'
 
 export default {
   name: 'AvailableQuizzes',
@@ -57,7 +58,7 @@ export default {
   },
   methods: {
     formatDateTime(dateStr) {
-      return new Date(dateStr).toLocaleString()
+      return formatQuizDateTime(dateStr)
     },
     async fetchQuizzes() {
       try {

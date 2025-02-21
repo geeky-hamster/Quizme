@@ -11,8 +11,8 @@
       <button type="button" class="btn-close" @click="error = null"></button>
     </div>
 
+    <!-- Stats Cards Row -->
     <div class="row g-4 mb-4">
-      <!-- Stats Cards -->
       <div class="col-md-3" v-for="(stat, key) in stats" :key="key">
         <div class="card h-100 shadow-sm">
           <div class="card-body">
@@ -30,6 +30,7 @@
       </div>
     </div>
 
+    <!-- Quick Actions and Recent Activity Row -->
     <div class="row g-4">
       <!-- Quick Actions -->
       <div class="col-md-6">
@@ -96,6 +97,7 @@
 
 <script>
 import userMixin from '@/mixins/userMixin'
+import { formatTimeAgo } from '@/utils/dateUtils'
 const API_URL = 'http://localhost:5000'
 
 export default {
@@ -130,7 +132,6 @@ export default {
   },
   async created() {
     await this.fetchDashboardData()
-    // Refresh data every 30 seconds
     this.refreshInterval = setInterval(this.fetchDashboardData, 30000)
   },
   beforeUnmount() {
@@ -166,17 +167,7 @@ export default {
       }
     },
     formatDate(timestamp) {
-      if (!timestamp) return ''
-      const date = new Date(timestamp)
-      const now = new Date()
-      const diffMinutes = Math.round((now - date) / (1000 * 60))
-      
-      if (diffMinutes < 1) return 'just now'
-      if (diffMinutes < 60) return `${diffMinutes} minutes ago`
-      if (diffMinutes < 120) return '1 hour ago'
-      if (diffMinutes < 1440) return `${Math.floor(diffMinutes / 60)} hours ago`
-      if (diffMinutes < 2880) return 'yesterday'
-      return date.toLocaleDateString()
+      return formatTimeAgo(timestamp)
     },
     getIconColorClass(key) {
       const colorClasses = {

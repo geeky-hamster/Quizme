@@ -3,12 +3,29 @@ from models import *
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity, unset_jwt_cookies
 from datetime import datetime, date
+import workers, task
+from mailer import mail
+from io import BytesIO, StringIO
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+from flask_caching import Cache
 
 app = Flask(__name__)
 
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///quizmaster.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['JWT_SECRET_KEY'] = 'super-secret'
+
+# MailHog Configuration
+app.config['MAIL_SERVER'] = 'localhost'
+app.config['MAIL_PORT'] = 1025
+app.config['MAIL_USE_TLS'] = False
+app.config['MAIL_USE_SSL'] = False
+app.config['MAIL_DEFAULT_SENDER'] = 'quizme@example.com'
+
+app.config['CACHE_TYPE'] = 'redis'
+app.config['CACHE_REDIS_URL'] = 'redis://localhost:6379/0'
 
 # Initialize extensions
 db.init_app(app)
@@ -26,6 +43,18 @@ CORS(app,
              "expose_headers": ["Content-Type", "Authorization"]
          }
      })
+
+mail.init_app(app)
+cache = Cache(app)
+celery = workers.celery
+
+celery.conf.update(
+    broker_url='redis://localhost:6379/1',
+    result_backend='redis://localhost:6379/2'
+)
+
+celery.Task = workers.ContextTask
+app.app_context().push()
 
 def create_admin():
     admin = User.query.filter_by(role='admin').first()
@@ -206,21 +235,22 @@ def manage_chapters(subject_id):
         'description': c.description
     } for c in chapters]), 200
 
-@app.route('/chapters/<int:chapter_id>', methods=['GET'])
-@jwt_required()
-def get_chapter(chapter_id):
-    chapter = Chapter.query.get_or_404(chapter_id)
-    return jsonify({
-        'id': chapter.id,
-        'name': chapter.name,
-        'description': chapter.description,
-        'subject_id': chapter.subject_id
-    }), 200
-
-@app.route('/chapters/<int:chapter_id>', methods=['PUT', 'DELETE'])
+@app.route('/chapters/<int:chapter_id>', methods=['GET', 'PUT', 'DELETE'])
 @jwt_required()
 def manage_chapter(chapter_id):
     current_user = get_jwt_identity()
+    
+    # GET method
+    if request.method == 'GET':
+        chapter = Chapter.query.get_or_404(chapter_id)
+        return jsonify({
+            'id': chapter.id,
+            'name': chapter.name,
+            'description': chapter.description,
+            'subject_id': chapter.subject_id
+        }), 200
+    
+    # For PUT and DELETE methods, check admin authorization
     if current_user['role'] != 'admin':
         return jsonify({"error": "Unauthorized"}), 403
     
@@ -446,6 +476,8 @@ def attempt_quiz(quiz_id):
         if user_answer and user_answer == question.correct_option:
             correct_answers += 1
     
+    percentage = (correct_answers / total_questions * 100) if total_questions > 0 else 0
+    
     score = Score(
         quiz_id=quiz_id,
         user_id=current_user['id'],
@@ -458,7 +490,8 @@ def attempt_quiz(quiz_id):
         db.session.commit()
         return jsonify({
             "message": "Quiz submitted successfully",
-            "score": f"{correct_answers}/{total_questions}"
+            "score": f"{correct_answers}/{total_questions}",
+            "percentage": round(percentage, 2)
         }), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -541,6 +574,7 @@ def get_user_scores():
 
 @app.route('/admin/dashboard-stats', methods=['GET'])
 @jwt_required()
+@cache.cached(timeout=180)
 def get_dashboard_stats():
     current_user = get_jwt_identity()
     if current_user['role'] != 'admin':
@@ -610,6 +644,123 @@ def get_dashboard_stats():
             'latestChapter': latest_chapter_data,
             'recentActivity': recent_activity
         }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/admin/statistics', methods=['GET'])
+@jwt_required()
+@cache.cached(timeout=180)
+def get_admin_statistics():
+    current_user = get_jwt_identity()
+    if current_user['role'] != 'admin':
+        return jsonify({"error": "Unauthorized"}), 403
+    
+    try:
+        # Get various statistics
+        total_users = User.query.filter(User.role != 'admin').count()
+        total_subjects = Subject.query.count()
+        total_chapters = Chapter.query.count()
+        total_quizzes = Quiz.query.count()
+        total_questions = Question.query.count()
+        total_attempts = Score.query.count()
+
+        # Get quiz completion rate
+        active_quizzes = Quiz.query.filter(Quiz.status == 'active').count()
+        completed_quizzes = Quiz.query.filter(Quiz.status == 'expired').count()
+        
+        # Get average scores by subject
+        subjects_data = []
+        subjects = Subject.query.all()
+        for subject in subjects:
+            chapters = Chapter.query.filter_by(subject_id=subject.id).all()
+            chapter_ids = [chapter.id for chapter in chapters]
+            quizzes = Quiz.query.filter(Quiz.chapter_id.in_(chapter_ids)).all()
+            quiz_ids = [quiz.id for quiz in quizzes]
+            scores = Score.query.filter(Score.quiz_id.in_(quiz_ids)).all()
+            
+            if scores:
+                avg_score = sum(score.total_scored / score.total_questions * 100 for score in scores) / len(scores)
+            else:
+                avg_score = 0
+                
+            subjects_data.append({
+                'name': subject.name,
+                'average_score': round(avg_score, 2)
+            })
+
+        stats = {
+            "total_users": total_users,
+            "total_subjects": total_subjects,
+            "total_chapters": total_chapters,
+            "total_quizzes": total_quizzes,
+            "total_questions": total_questions,
+            "total_attempts": total_attempts,
+            "active_quizzes": active_quizzes,
+            "completed_quizzes": completed_quizzes,
+            "subjects_performance": subjects_data
+        }
+
+        return jsonify(stats), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/user/statistics', methods=['GET'])
+@jwt_required()
+def get_user_statistics():
+    current_user = get_jwt_identity()
+    try:
+        # Get user's quiz attempts
+        user_scores = Score.query.filter_by(user_id=current_user['id']).all()
+        
+        # Calculate total attempts and average score
+        total_attempts = len(user_scores)
+        if total_attempts > 0:
+            average_score = sum(score.total_scored / score.total_questions * 100 for score in user_scores) / total_attempts
+        else:
+            average_score = 0
+        
+        # Get performance by subject
+        subjects_data = []
+        subjects = Subject.query.all()
+        for subject in subjects:
+            chapters = Chapter.query.filter_by(subject_id=subject.id).all()
+            chapter_ids = [chapter.id for chapter in chapters]
+            quizzes = Quiz.query.filter(Quiz.chapter_id.in_(chapter_ids)).all()
+            quiz_ids = [quiz.id for quiz in quizzes]
+            scores = Score.query.filter(Score.quiz_id.in_(quiz_ids), Score.user_id == current_user['id']).all()
+            
+            if scores:
+                avg_score = sum(score.total_scored / score.total_questions * 100 for score in scores) / len(scores)
+                attempts = len(scores)
+            else:
+                avg_score = 0
+                attempts = 0
+                
+            subjects_data.append({
+                'name': subject.name,
+                'average_score': round(avg_score, 2),
+                'attempts': attempts
+            })
+        
+        # Get recent performance trend (last 5 attempts)
+        recent_scores = Score.query.filter_by(user_id=current_user['id']).order_by(Score.time_stamp_of_attempt.desc()).limit(5).all()
+        performance_trend = []
+        for score in recent_scores:
+            quiz = Quiz.query.get(score.quiz_id)
+            performance_trend.append({
+                'quiz_title': quiz.title,
+                'score': round((score.total_scored / score.total_questions * 100), 2),
+                'date': score.time_stamp_of_attempt.strftime('%Y-%m-%d')
+            })
+
+        stats = {
+            "total_attempts": total_attempts,
+            "average_score": round(average_score, 2),
+            "subjects_performance": subjects_data,
+            "performance_trend": performance_trend
+        }
+
+        return jsonify(stats), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

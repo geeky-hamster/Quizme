@@ -298,6 +298,7 @@
 
 <script>
 import userMixin from '../../mixins/userMixin'
+import { formatQuizDateTime } from '@/utils/dateUtils'
 
 export default {
   name: 'QuizzesPage',
@@ -330,16 +331,7 @@ export default {
   },
   methods: {
     formatDateTime(dateStr) {
-      const date = new Date(dateStr)
-      return new Intl.DateTimeFormat('default', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: true,
-        timeZoneName: 'short'
-      }).format(date)
+      return formatQuizDateTime(dateStr)
     },
     getQuizStatusClass(quiz) {
       if (quiz.is_active) return 'border-success'

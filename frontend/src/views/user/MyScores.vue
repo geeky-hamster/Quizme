@@ -19,19 +19,26 @@
                   <tr>
                     <th>Subject</th>
                     <th>Chapter</th>
+                    <th>Quiz Title</th>
                     <th>Date</th>
                     <th>Score</th>
-                    <th>Percentage</th>
+                    <th>Performance</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr v-for="score in scores" :key="score.id">
                     <td>{{ score.subject }}</td>
                     <td>{{ score.chapter }}</td>
+                    <td>{{ score.quiz_title }}</td>
                     <td>{{ formatDateTime(score.attempt_time) }}</td>
-                    <td>{{ score.score }}</td>
                     <td>
-                      <div class="progress">
+                      <span class="badge" :class="getScoreBadgeClass(score.percentage)">
+                        {{ score.percentage }}%
+                      </span>
+                      <small class="text-muted ms-2">({{ score.score }})</small>
+                    </td>
+                    <td>
+                      <div class="progress" style="height: 20px;">
                         <div 
                           class="progress-bar" 
                           role="progressbar" 
@@ -62,6 +69,7 @@
 
 <script>
 import userMixin from '../../mixins/userMixin'
+import { formatDateTime } from '@/utils/dateUtils'
 
 export default {
   name: 'MyScores',
@@ -77,12 +85,18 @@ export default {
   },
   methods: {
     formatDateTime(dateStr) {
-      return new Date(dateStr).toLocaleString()
+      return formatDateTime(dateStr)
+    },
+    getScoreBadgeClass(percentage) {
+      if (percentage >= 90) return 'bg-success'
+      if (percentage >= 75) return 'bg-info'
+      if (percentage >= 60) return 'bg-warning'
+      return 'bg-danger'
     },
     getProgressBarClass(percentage) {
-      if (percentage >= 80) return 'bg-success'
-      if (percentage >= 60) return 'bg-info'
-      if (percentage >= 40) return 'bg-warning'
+      if (percentage >= 90) return 'bg-success'
+      if (percentage >= 75) return 'bg-info'
+      if (percentage >= 60) return 'bg-warning'
       return 'bg-danger'
     },
     async fetchScores() {
@@ -107,10 +121,34 @@ export default {
 
 <style scoped>
 .progress {
-  height: 25px;
+  height: 20px;
+  border-radius: 10px;
+  background-color: #f0f0f0;
 }
+
 .progress-bar {
-  line-height: 25px;
+  line-height: 20px;
   font-weight: bold;
+  font-size: 0.85rem;
+  transition: width 0.6s ease;
+}
+
+.badge {
+  font-size: 0.9rem;
+  padding: 0.4em 0.6em;
+}
+
+.table > :not(caption) > * > * {
+  padding: 1rem;
+  vertical-align: middle;
+}
+
+.table th {
+  font-weight: 600;
+  background-color: #f8f9fa;
+}
+
+.table tr:hover {
+  background-color: rgba(0, 0, 0, 0.02);
 }
 </style> 

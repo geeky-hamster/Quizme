@@ -35,9 +35,21 @@ const routes = [
     meta: { requiresAuth: true, requiresAdmin: true }
   },
   {
+    path: '/admin/statistics',
+    name: 'AdminStatistics',
+    component: () => import('../views/admin/AdminStatistics.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true }
+  },
+  {
     path: '/dashboard',
     name: 'UserDashboard',
     component: () => import('../views/user/UserDashboard.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/user/statistics',
+    name: 'UserStatistics',
+    component: () => import('../views/user/UserStatistics.vue'),
     meta: { requiresAuth: true }
   },
   {
